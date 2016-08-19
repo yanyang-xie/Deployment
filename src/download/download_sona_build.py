@@ -1,14 +1,16 @@
 # -*- coding=utf-8 -*-
 # author: yanyang.xie@gmail.com
 
-import base64
 import getopt
 import os
 import re
 import string
 import sys
 
-import requests_util 
+sys.path.append("../util")
+
+from requests.auth import HTTPBasicAuth
+import requests_util
 
 sona_build_url = 'https://nexus.eng.thistech.com/nexus/service/local/repositories/%s/content/com/thistech/%s/%s/'
 sona_user_name, sona_passwd = ('', '')
@@ -18,20 +20,22 @@ http_proxy, https_proxy = None, None
 local_file_dir, local_file_name = (os.path.dirname(os.path.abspath(__file__)), '')
 
 def get_sona_build_version_xml(url, user_name, sona_password):
-    base64string = base64.encodestring('%s:%s' % (user_name, sona_password)).replace('\n', '')
-    auth_token = 'Basic %s' % (base64string)
-    headers = {'Authorization':auth_token, 'Referer':'https://nexus.eng.thistech.com/nexus/index.html'}
+    headers = {'Referer':'https://nexus.eng.thistech.com/nexus/index.html'}
+    auth = HTTPBasicAuth(user_name, sona_password)
     
     rd = requests_util.RequestsUtility()
-    return rd.get_response(url, headers=headers)
+    return rd.get_response(url, headers=headers, auth=auth)
 
 def download_sona_build(url, user_name, sona_password, local_file_name=None, proxies=None, params=None, stream=True, chunk_size=512 * 1024.0):
-    base64string = base64.encodestring('%s:%s' % (user_name, sona_password)).replace('\n', '')
-    auth_token = 'Basic %s' % (base64string)
-    headers = {'Authorization':auth_token, 'Referer':'https://nexus.eng.thistech.com/nexus/index.html'}
+    # base64string = base64.encodestring('%s:%s' % (user_name, sona_password)).replace('\n', '')
+    # auth_token = 'Basic %s' % (base64string)
+    # headers = {'Authorization':auth_token, 'Referer':'https://nexus.eng.thistech.com/nexus/index.html'}
+    
+    headers = {'Referer':'https://nexus.eng.thistech.com/nexus/index.html'}
+    auth = HTTPBasicAuth(user_name, sona_password)
     
     rd = requests_util.RequestsUtility()
-    rd.download_file(url, local_file_name=local_file_name, headers=headers, params=params, proxies=proxies, stream=stream, chunk_size=chunk_size)
+    rd.download_file(url, local_file_name=local_file_name, auth=auth, headers=headers, params=params, proxies=proxies, stream=stream, chunk_size=chunk_size)
 
 def get_latest_build_file_name(build_manifest, sona_build_regular):
     t_info = re.findall(sona_build_regular, build_manifest)
@@ -76,7 +80,9 @@ def usage():
     print '*' * 100
 
 def read_parameters():
-    global sona_user_name, sona_passwd, sona_passwd, project_name, project_version, project_build_file_ext_name, local_file_dir, local_file_name
+    global sona_user_name, sona_passwd, sona_passwd
+    global project_name, project_version, project_build_file_ext_name
+    global local_file_dir, local_file_name
     global http_proxy, https_proxy
     
     opt_dict = read_opts(['-h', '-u', '-p', '-n', '-v', '-e', '-d', '-f', '-y', '-Y'])[0]
@@ -135,14 +141,15 @@ def check_parameters():
     
     return True
 
-# python download_sona_build.py -u yanyang.xie -p ***** -n vex -v 2.0.0-SNAPSHOT -e release.zip -f vex.zip
-if __name__ == '__main__':
+def main():
     if not read_parameters():
         sys.exit(0)
     
     if not check_parameters():
         usage()
         sys.exit(0)
+    
+    print local_file_name
     
     '''
     sona_user_name, sona_passwd = ('yanyang.xie', '****')
@@ -163,6 +170,12 @@ if __name__ == '__main__':
     build_download_url = project_basic_url + project_latest_build_name
     print 'Start to download sona build %s to %s using following url:\n\t%s' % (project_latest_build_name, generate_local_file_path(local_file_dir, local_file_name), build_download_url)
     
-    local_file_name = project_latest_build_name if local_file_name == '' else local_file_name
-    download_sona_build(build_download_url, sona_user_name, sona_passwd, generate_local_file_path(local_file_dir, local_file_name))
-    print 'Finish to download sona build %s to %s.' % (project_latest_build_name, generate_local_file_path(local_file_dir, local_file_name))
+    file_name = project_latest_build_name if local_file_name == '' else local_file_name
+    downloaded_file_name = generate_local_file_path(local_file_dir, file_name)
+    download_sona_build(build_download_url, sona_user_name, sona_passwd, downloaded_file_name)
+    print 'Finish to download sona build %s to %s.' % (project_latest_build_name, downloaded_file_name)
+
+
+if __name__ == '__main__':
+    main()
+    # python download_sona_build.py -u yanyang.xie -p ***** -n vex -v 2.0.0-SNAPSHOT -e release.zip -f vex.zip
