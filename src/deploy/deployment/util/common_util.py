@@ -1,7 +1,5 @@
-# -*- coding=utf-8 -*-
-# author: yanyang.xie@gmail.com
-
 import os
+import shutil
 import string
 
 
