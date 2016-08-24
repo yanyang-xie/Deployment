@@ -170,9 +170,13 @@ def main():
     build_download_url = project_basic_url + project_latest_build_name
     print 'Start to download sona build %s to %s using following url:\n\t%s' % (project_latest_build_name, generate_local_file_path(local_file_dir, local_file_name), build_download_url)
     
+    proxies = {}
+    if http_proxy: proxies["http"] = http_proxy
+    if https_proxy: proxies["https"] = https_proxy
+    
     file_name = project_latest_build_name if local_file_name == '' else local_file_name
     downloaded_file_name = generate_local_file_path(local_file_dir, file_name)
-    download_sona_build(build_download_url, sona_user_name, sona_passwd, downloaded_file_name)
+    download_sona_build(build_download_url, sona_user_name, sona_passwd, downloaded_file_name, proxies=proxies)
     print 'Finish to download sona build %s to %s.' % (project_latest_build_name, downloaded_file_name)
 
 

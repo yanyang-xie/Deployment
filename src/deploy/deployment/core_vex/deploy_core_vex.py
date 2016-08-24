@@ -7,7 +7,7 @@ import string
 import sys
 import time
 
-from fabric.context_managers import lcd, cd
+from fabric.context_managers import lcd, cd, settings
 from fabric.decorators import roles, task, parallel
 from fabric.operations import run, local, put
 from fabric.state import env
@@ -16,6 +16,7 @@ from fabric.tasks import execute
 sys.path.append('../util')
 import common_util
 import constant
+import encrypt_util
 import fab_util
 import log_util
 
@@ -51,13 +52,15 @@ def start_core_vex_cluster(service_name=constant.TOMCAT_SERVICE, clean_log=False
 @parallel
 @roles('memcached_server')
 def shutdown_memcached_cluster(service_name=constant.MEMCACHED_SERVICE):
-    fab_util.fab_shutdown_service(service_name)
+    with settings(skip_bad_hosts=True):
+        fab_util.fab_shutdown_service(service_name)
 
 @task
 @parallel
 @roles('memcached_server')
 def start_memcached_cluster(service_name=constant.MEMCACHED_SERVICE):
-    _fab_start_server(service_name)
+    with settings(skip_bad_hosts=True):
+        _fab_start_server(service_name)
 
 @task
 def shutdown_core_vex_service():
@@ -178,7 +181,8 @@ def init_vex_deploy_parameters():
     if vex_parameters.has_key('auto.download.sona.build') and string.strip(vex_parameters['auto.download.sona.build']) == 'True':
         download_sona_build = True
         sona_user_name = vex_parameters.get('sona.user.name')
-        sona_user_password = vex_parameters.get('sona.user.passwd')
+        sona_user_password = encrypt_util.decrypt('Thistech', vex_parameters.get('sona.user.passwd'))
+        
         vex_project_name = vex_parameters.get('vex.project.name')
         vex_project_version = vex_parameters.get('vex.project.version')
         vex_project_extension_name = vex_parameters.get('vex.project.extension.name')
@@ -222,10 +226,6 @@ def init_vex_deploy_dir():
     local('rm -rf ' + constant.VEX_AUTO_DEPLOY_DIR)
     local('mkdir -p ' + constant.VEX_AUTO_DEPLOY_DIR)
 
-def clean_up_log(log_dir=constant.TOMCAT_DIR + '/logs'):
-    print 'Clean tomcat logs %s' % (log_dir)
-    run('rm -rf %s/*' % (log_dir), pty=False)
-
 def merge_vex_golden_config():
     print '#' * 100
     print 'Merge vex changes file %s with vex golden config %s' % ('vex-changes.properties', 'vex-golden.properties')
@@ -250,8 +250,9 @@ def merge_vex_golden_config():
 def download_build():
     # print 'python %s/download_sona_build.py -u %s -p %s -n %s -v %s -e %s -d %s -f %s' %(here,sona_user_name,sona_user_password,vex_project_name,vex_project_version,vex_project_extension_name,vex_local_file_dir, vex_local_file_name)
     # local('python %s/download_sona_build.py -u %s -p %s -n %s -v %s -e %s -d %s -f %s' %(here,sona_user_name,sona_user_password,vex_project_name,vex_project_version,vex_project_extension_name,vex_local_file_dir, vex_local_file_name))
-
-    command = 'python %s/download_sona_build.py -u %s -p %s -n %s -v %s -e %s -d %s -f %s' % (here, sona_user_name, sona_user_password, vex_project_name, vex_project_version, vex_project_extension_name, vex_local_file_dir, vex_local_file_name)
+    
+    download_script = os.path.dirname(here) + os.sep + 'util' + os.sep + 'download_sona_build.py'
+    command = 'python %s -u %s -p %s -n %s -v %s -e %s -d %s -f %s' % (download_script, sona_user_name, sona_user_password, vex_project_name, vex_project_version, vex_project_extension_name, vex_local_file_dir, vex_local_file_name)
     command = command + ' -y %s ' % (http_proxy) if http_proxy is not None else command
     command = command + ' -Y %s ' % (https_proxy) if https_proxy is not None else command
     if download_command_prefix is not None:
