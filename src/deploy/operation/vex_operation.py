@@ -7,20 +7,26 @@ Created on 2014-1-3
 @author: yanyang
 '''
 
+from functools import wraps
+import os
+import string
+import sys
+import time
+
 from fabric.colors import red
 from fabric.context_managers import cd
 from fabric.decorators import roles, task, parallel
 from fabric.tasks import execute
-from functools import wraps
+
+import common_util
 import constant
 import fab_util
-import os
-import string
-import time
-import common_util
 
 here = os.path.dirname(os.path.abspath(__file__))
-configs = common_util.load_properties(here + os.sep + 'config.properties')
+
+config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
+config_file = here + os.sep + config_sub_folder + 'config.properties'
+configs = common_util.load_properties(config_file)
 
 user = common_util.get_config_value_by_key(configs, 'user')
 pub_key = common_util.get_config_value_by_key(configs, 'public.key')
