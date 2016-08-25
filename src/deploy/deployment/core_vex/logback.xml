@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration debug="false" scan="true" scanPeriod="1 minutes">
+     <!--<jmxConfiguration/> -->
+
+    <!-- Log Levels -->
+    <property name="debug.enabled" value="true"/>
+    <property name="jndi.insert.enabled" value="true"/>
+
+    <!-- Log Locations -->
+    <!-- Note: No need for trailing slash on the directory path. -->
+    <property name="log.location" value="/usr/local/thistech/tomcat/logs"/>
+    <property name="log.location.archive" value="${log.location}/archive"/>
+
+    <!-- Console (catalina.out) -->
+    <property name="console.enabled" value="true"/>
+
+    <!-- Common file for all log messages, thistech.log; like console -->
+    <property name="file.thistech.enabled" value="true"/>
+
+    <!-- Log to application specific file -->
+    <property name="file.enabled" value="true"/>
+
+    <!-- Syslog -->
+    <property name="syslog.enabled" value="false"/>
+    <property name="syslog.server" value="localhost"/>
+    <property name="syslog.port" value="514"/>
+    <property name="syslog.line.pattern" value="[%level] |%contextName| %msg%n%ex{full}"/>
+
+    <!-- Email Alerts -->
+    <property name="email.enabled" value="false"/>
+    <property name="email.smtp" value="localhost"/>
+    <property name="email.port" value="25"/>
+    <property name="email.to" value="root@localhost"/>
+    <property name="email.from" value="root@localhost"/>
+    <property name="email.subject" value="TT: %logger{20} - %m"/>
+    <property name="email.starttls" value="false"/>
+    <property name="email.ssl" value="false"/>
+    <property name="email.username" value=""/>
+    <property name="email.password" value=""/>
+    <property name="email.line.pattern" value="An error occurred on %logger at %d{HH:mm:ss.SSS}:%n%n%msg%n%n%ex{full}%n"/>
+
+    <!-- Log at info level for 14 log cycles and cap each log file at 100MB. 1.4GB max uncompressed.-->
+    <property name="thistech.max.history" value="14"/>
+    <property name="thistech.max.history.minutes" value="20160"/>
+    <property name="thistech.max.filesize" value="100MB"/>
+
+    <!-- Rollover each day at midnight. -->
+    <property name="thistech.rollover.pattern" value="%d"/>
+    <property name="thistech.rollover.pattern.minutes" value="%d{yyyyMMdd_HHmm}"/>
+    <!-- Rollover every minute. Not recommended. -->
+    <!--<property name="thistech.rollover.pattern" value="%d{yyyyMMdd_hhmm}"/>-->
+
+    <!-- Log compression. Set to .zip or .gz for compression. .log or empty to disable. -->
+    <property name="thistech.log.compression" value=".gz"/>
+
+    <!-- Output log line pattern. -->
+    <property name="thistech.line.pattern" value="%date{yyyyMMdd HH:mm:ss.SSS} %logger %level [%contextName] [%thread] [%class{10}.%method:%line] %message%n"/>
+
+    <!-- Exception log values. -->
+    <property name="exception.line.pattern" value="${thistech.line.pattern}"/>
+    <property name="exception.rollover.pattern" value="${thistech.rollover.pattern}"/>
+    <property name="exception.log.compression" value="${thistech.log.compression}"/>
+    <property name="exception.max.history" value="${thistech.max.history}"/>
+    <property name="exception.max.filesize" value="${thistech.max.filesize}"/>
+
+    <property name="console.line.pattern" value="${thistech.line.pattern}"/>
+
+    <property name="collated.rollover.pattern" value="${thistech.rollover.pattern.minutes}"/>
+    <property name="collated.log.compression" value="${thistech.log.compression}"/>
+    <property name="collated.max.history" value="${thistech.max.history.minutes}"/>
+    <property name="collated.max.filesize" value="${thistech.max.filesize}"/>
+    <property name="collated.app.name" value="oplog"/>
+
+    <property name="event.subset.max.history" value="${thistech.max.history}"/>
+
+    <!-- 
+        LEAVE THIS HERE!  There is something about properties vs. our custom Mongo appender that
+        requires the properties resource to be pulled in at this point!
+
+        I think this is a problem with classloaders...the properties are in the global classloader,
+        but our Mongo appender is in the app's local classloader.
+    -->
+
+    <!-- The properties file is not required (i.e., can be omitted) without error. -->
+    <property resource="logback.properties"/>
+
+
+    <!-- Intelligent Data Store (IDS) control -->
+    <property scope="context" name="ids.logging.enabled" value="true" />
+    <property scope="context" name="ids.operational.db.address" value="172.31.3.241:27017" />
+    <property scope="context" name="ids.operational.db.name" value="Operations" />
+    <property scope="context" name="ids.operational.db.collection" value="OperationalEvents" />
+    <property scope="context" name="ids.operational.db.username" value="opevents" />
+    <property scope="context" name="ids.operational.db.password" value="opevents" />
+    <property scope="context" name="ids.operational.db.connPerHost" value="40" />
+    <property scope="context" name="ids.operational.db.batchSize" value="100" />
+
+    <property scope="context" name="ids.application.db.address" value="${ids.operational.db.address}" />
+    <property scope="context" name="ids.application.db.name" value="${ids.operational.db.name}" />
+    <property scope="context" name="ids.application.db.username" value="${ids.operational.db.username}" />
+    <property scope="context" name="ids.application.db.password" value="${ids.operational.db.password}" />
+    <property scope="context" name="ids.application.db.connPerHost" value="${ids.operational.db.connPerHost}" />
+    <property scope="context" name="ids.application.db.batchSize" value="${ids.operational.db.batchSize}" />
+
+
+
+    <!-- Application name -->
+    <if condition='property("jndi.insert.enabled").equals("true")'>
+        <then>
+            <insertFromJNDI env-entry-name="java:comp/env/appName" as="jndi.app.name"/>
+        </then>
+    </if>
+
+    <!-- Set the application context. -->
+    <if condition='isDefined("jndi.app.name") &amp;&amp; !property("jndi.app.name").equals("")'>
+        <then>
+            <property name="app.name" value="${jndi.app.name}"/>
+            <contextName>${jndi.app.name}</contextName>
+        </then>
+        <else>
+            <property name="app.name" value="thistechapp"/>
+            <contextName>ThisTech</contextName>
+         </else>
+    </if>
+
+    <!-- Console writer, which for Tomcat is the catalina.out -->
+    <if condition='property("console.enabled").equals("true")'>
+        <then>
+            <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder>
+                    <pattern>${console.line.pattern}</pattern>
+                </encoder>
+            </appender>
+
+            <logger name="OpLogCollator" additivity="false" level="TRACE">
+                <appender-ref ref="console"/>
+            </logger>
+
+            <!-- The application log, e.g. "metamore.log" or "spotlink.log" -->
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+                <appender-ref ref="console"/>
+            </logger>
+
+            <!-- The Apache CXF log messages (web services layer) -->
+            <logger name="org.apache.cxf" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="WARN"/> </else>
+                </if>
+                <appender-ref ref="console"/>
+            </logger>
+
+            <logger name="org.apache.wicket" level="ERROR" additivity="false">
+                <appender-ref ref="console"/>
+            </logger>
+
+            <logger name="org.apache.apachemq" level="WARN">
+                <appender-ref ref="console"/>
+            </logger>
+
+            <logger name="ch.qos.logback" level="WARN">
+                <appender-ref ref="console"/>
+            </logger>
+
+            <!-- Root logger control. -->
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="console"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- Same as console logger, but writes output to a common, rotating "thistech.log" file. -->
+    <if condition='property("file.thistech.enabled").equals("true")'>
+        <then>
+            <appender name="thistech-log" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <append>true</append>
+                <file>${log.location}/thistech.log</file>
+                <encoder>
+                    <pattern>${thistech.line.pattern}</pattern>
+                </encoder>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${log.location.archive}/${app.name}.%i.log.${thistech.rollover.pattern}${thistech.log.compression}</fileNamePattern>
+                    <maxHistory>${thistech.max.history}</maxHistory>
+                    <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <maxFileSize>${thistech.max.filesize}</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                </rollingPolicy>
+            </appender>
+
+            <logger name="OpLogCollator" additivity="false" level="TRACE">
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <!-- The application log, e.g. "metamore.log" or "spotlink.log" -->
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <!-- The Apache CXF log messages (web services layer) -->
+            <logger name="org.apache.cxf" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="WARN"/> </else>
+                </if>
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <logger name="org.apache.wicket" level="ERROR" additivity="false">
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <logger name="org.apache.apachemq" level="WARN">
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <logger name="ch.qos.logback" level="WARN">
+                <appender-ref ref="thistech-log"/>
+            </logger>
+
+            <!-- Root logger control. -->
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="thistech-log"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- ThisTech application log definition, e.g. "metamore.log" or "spotlink.log" -->
+    <if condition='property("file.enabled").equals("true")'>
+        <then>
+            <!-- General purpose logging; obeys the logger setting, and no exceptions in this one -->
+            <appender name="local-file-application-log" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <append>true</append>
+                <file>${log.location}/${app.name}.log</file>
+                <encoder>
+                    <pattern>${thistech.line.pattern}</pattern>
+                </encoder>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${log.location.archive}/${app.name}.%i.log.${thistech.rollover.pattern}${thistech.log.compression}</fileNamePattern>
+                    <maxHistory>${thistech.max.history}</maxHistory>
+                    <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <maxFileSize>${thistech.max.filesize}</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                </rollingPolicy>
+            </appender>
+
+            <!-- Capture all exceptions thrown to this file. -->
+            <appender name="local-file-exception-log" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <!-- Drop all messages below threshold. At or above is accepted. -->
+                <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                    <level>WARN</level>
+                </filter>
+
+                <append>true</append>
+                <file>${log.location}/${app.name}_error.log</file>
+                <encoder>
+                    <pattern>${exception.line.pattern}</pattern>
+                </encoder>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${log.location.archive}/${app.name}_error.%i.log.${exception.rollover.pattern}${exception.log.compression}</fileNamePattern>
+                    <maxHistory>${exception.max.history}</maxHistory>
+                    <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <maxFileSize>${exception.max.filesize}</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                </rollingPolicy>
+            </appender>
+
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+
+                <appender-ref ref="local-file-application-log"/>
+                <appender-ref ref="local-file-exception-log"/>
+            </logger>
+
+            <logger name="org.apache.cxf" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="WARN"/> </else>
+                </if>
+                <appender-ref ref="local-file-application-log"/>
+                <appender-ref ref="local-file-exception-log"/>
+            </logger>
+
+            <logger name="org.apache.wicket" level="ERROR" additivity="false">
+                <appender-ref ref="local-file-application-log"/>
+                <appender-ref ref="local-file-exception-log"/>
+            </logger>
+
+            <logger name="org.apache.apachemq" level="WARN">
+                <appender-ref ref="local-file-application-log"/>
+                <appender-ref ref="local-file-exception-log"/>
+            </logger>
+
+            <logger name="ch.qos.logback" level="WARN">
+                <appender-ref ref="local-file-application-log"/>
+                <appender-ref ref="local-file-exception-log"/>
+            </logger>
+
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="local-file-exception-log"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- Capture collated operations log (OpLog) to this file. -->
+    <if condition='property("app.name").equals(property("collated.app.name"))'>
+        <then>
+            <appender name="collated-local-file-log" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <append>true</append>
+                <file>${log.location}/${app.name}_collated.log</file>
+                <encoder>
+                    <!-- message pattern is defined in oplog-manager-defaults.properties -->
+                    <pattern>%message%n</pattern>
+                </encoder>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <fileNamePattern>${log.location.archive}/${app.name}_collated.%i.log.${collated.rollover.pattern}${collated.log.compression}</fileNamePattern>
+                    <maxHistory>${collated.max.history}</maxHistory>
+                    <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.ThisTechSizeAndTimeBasedFNATP">
+                        <maxFileSize>${collated.max.filesize}</maxFileSize>
+                        <executePrepAtInit>false</executePrepAtInit>
+                        <executeRolloverAtInit>false</executeRolloverAtInit>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                </rollingPolicy>
+            </appender>
+
+            <logger name="OpLogCollator" additivity="false" level="TRACE">
+                <appender-ref ref="collated-local-file-log"/>
+            </logger>
+       </then>
+    </if>
+
+
+    <!-- Email Alerts -->
+    <if condition='property("email.enabled").equals("true")'>
+        <then>
+            <appender name="ids-operational-maillog" class="ch.qos.logback.classic.net.SMTPAppender">
+                 <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>ERROR</level>
+                    <onMatch>ACCEPT</onMatch>
+                    <onMismatch>DENY</onMismatch>
+                </filter>
+
+                <smtpHost>${email.smtp}</smtpHost>
+                <smtpPort>${email.port}</smtpPort>
+                <to>${email.to}</to>
+                <from>${email.from}</from>
+                <subject>${email.subject}</subject>
+                <STARTTLS>${email.starttls}</STARTTLS>
+                <SSL>${email.ssl}</SSL>
+                <username>${email.username}</username>
+                <password>${email.password}</password>
+
+                <layout class="ch.qos.logback.classic.PatternLayout">
+                  <pattern>${email.line.pattern}</pattern>
+                </layout>
+            </appender>
+
+            <!-- Smart data feed application event source. -->
+            <appender name="ids-application-event-maillog" class="ch.qos.logback.classic.net.SMTPAppender">
+                 <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                    <level>ERROR</level>
+                    <onMatch>ACCEPT</onMatch>
+                    <onMismatch>DENY</onMismatch>
+                </filter>
+
+                <smtpHost>${email.smtp}</smtpHost>
+                <smtpPort>${email.port}</smtpPort>
+                <to>${email.to}</to>
+                <from>${email.from}</from>
+                <subject>${email.subject}</subject>
+                <STARTTLS>${email.starttls}</STARTTLS>
+                <SSL>${email.ssl}</SSL>
+                <username>${email.username}</username>
+                <password>${email.password}</password>
+                <layout class="ch.qos.logback.classic.PatternLayout">
+                  <pattern>${email.line.pattern}</pattern>
+                </layout>
+            </appender>
+
+            <!-- Application events are sent to the named loggers. -->
+            <logger name="SLRAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="CISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="POISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="MetaMoreAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="SpotBuilderAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="ACSAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="ESPAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+            <logger name="VEXAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-maillog"/>
+            </logger>
+
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+                <appender-ref ref="ids-operational-maillog"/>
+            </logger>
+
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="ids-operational-maillog"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- Syslog logging; based on IDS logging section below -->
+    <if condition='property("syslog.enabled").equals("true")'>
+        <then>
+
+            <!-- Smart data feed operational event source. -->
+            <appender name="ids-operational-syslog" class="ch.qos.logback.classic.net.SyslogAppender">
+                <syslogHost>localhost</syslogHost>
+                <facility>LOCAL3</facility>
+                <suffixPattern>${syslog.line.pattern}</suffixPattern>
+            </appender>
+
+            <!-- Smart data feed application event source. -->
+            <appender name="ids-application-event-syslog" class="ch.qos.logback.classic.net.SyslogAppender">
+                <syslogHost>localhost</syslogHost>
+                <facility>LOCAL5</facility>
+                <suffixPattern>${syslog.line.pattern}</suffixPattern>
+            </appender>
+
+            <!-- Application events are sent to the named loggers. -->
+            <logger name="SLRAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="CISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="POISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="MetaMoreAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="SpotBuilderAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="ACSAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="ESPAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+            <logger name="VEXAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-syslog"/>
+            </logger>
+
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+                <appender-ref ref="ids-operational-syslog"/>
+            </logger>
+
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="ids-operational-syslog"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- IDS logging. -->
+    <if condition='property("ids.logging.enabled").equals("true")'>
+        <then>
+
+            <!-- Smart data feed operational event source. -->
+            <appender name="ids-operational-log" class="com.thistech.common.mongo.logging.OperationalMongoAppender">
+                <!-- Drop all messages below threshold. At or above is accepted. -->
+                <!-- Stops debug messages to smart data. -->
+                <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                    <level>INFO</level>
+                </filter>
+
+                <AddressString>${ids.operational.db.address}</AddressString>
+                <DatabaseName>${ids.operational.db.name}</DatabaseName>
+                <CollectionName>${ids.operational.db.collection}</CollectionName>
+                <Username>${ids.operational.db.username}</Username>
+                <Password>${ids.operational.db.password}</Password>
+                <ApplicationCode>${app.name}</ApplicationCode>
+                <ConnectionsPerHost>${ids.operational.db.connPerHost}</ConnectionsPerHost>
+                <BatchSize>${ids.operational.db.batchSize}</BatchSize>
+            </appender>
+
+            <!-- Smart data feed application event source. -->
+            <appender name="ids-application-event-log" class="com.thistech.common.mongo.logging.AsyncMongoAppender">
+                <AddressString>${ids.application.db.address}</AddressString>
+                <DatabaseName>${ids.application.db.name}</DatabaseName>
+                <Username>${ids.application.db.username}</Username>
+                <Password>${ids.application.db.password}</Password>
+                <ApplicationCode>${app.name}</ApplicationCode>0
+                <ConnectionsPerHost>${ids.application.db.connPerHost}</ConnectionsPerHost>
+                <BatchSize>${ids.application.db.batchSize}</BatchSize>
+            </appender>
+
+            <!-- Application events are sent to the named loggers. -->
+            <logger name="SLRAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="CISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="POISAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="MetaMoreAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="SpotBuilderAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="ACSAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="ESPAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+            <logger name="VEXAppEvents" additivity="false" level="INFO">
+                <appender-ref ref="ids-application-event-log"/>
+            </logger>
+
+            <logger name="com.thistech" additivity="false">
+                <if condition='property("debug.enabled").equals("true")'>
+                    <then> <level value="DEBUG"/> </then>
+                    <else> <level value="INFO"/> </else>
+                </if>
+
+                <appender-ref ref="ids-operational-log"/>
+            </logger>
+
+            <root>
+                <if condition='property("debug.enabled").equals("false")'>
+                    <then> <level value="WARN"/> </then>
+                </if>
+                <appender-ref ref="ids-operational-log"/>
+            </root>
+        </then>
+    </if>
+
+
+    <!-- SLR Event Log -->
+    <appender name="slr-event-subset-log" class="ch.qos.logback.core.rolling.ForcedRolloverFileAppender">
+        <append>true</append>
+        <file>${log.location}/slr_event_subset.log</file>
+        <encoder>
+            <pattern>%message%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.BasicFileRollingPolicy">
+            <fileNamePattern>${log.location}/slr_event_subset.%d{yyyy-MM-dd_HH:mm:ss.SSS}.log</fileNamePattern>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="SLRAppEventsSubset" additivity="false" level="INFO">
+        <appender-ref ref="slr-event-subset-log"/>
+    </logger>
+
+
+    <!-- Oplog Event Log -->
+    <appender name="oplog-event-log" class="ch.qos.logback.core.rolling.ForcedRolloverFileAppender">
+        <append>true</append>
+        <file>${log.location}/oplog_event.log</file>
+        <encoder>
+            <pattern>%message%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.BasicFileRollingPolicy">
+            <fileNamePattern>${log.location}/oplog_event.%d{yyyy-MM-dd_HH:mm:ss.SSS}.log</fileNamePattern>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="OpLogEventLog" additivity="false" level="INFO">
+        <appender-ref ref="oplog-event-log"/>
+    </logger>
+
+</configuration>

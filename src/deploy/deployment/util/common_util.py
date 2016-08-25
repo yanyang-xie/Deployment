@@ -1,7 +1,8 @@
-import os
-import shutil
-import string
+# -*- coding=utf-8 -*-
+# author: yanyang.xie@gmail.com
 
+import os
+import string
 
 def get_config_value_by_key(config_dict, key, default_value=None):
     '''

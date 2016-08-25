@@ -1,5 +1,5 @@
-#!/usr/bin/python  
-# -*- coding=utf-8 -*-  
+# -*- coding=utf-8 -*-
+# author: yanyang.xie@gmail.com
 
 '''
 @author: yanyang.xie@thistech.com

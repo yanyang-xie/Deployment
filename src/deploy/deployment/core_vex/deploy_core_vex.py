@@ -1,17 +1,18 @@
-#!/usr/bin/python
-# coding:utf-8
-# author: yanyang.xie
+# -*- coding=utf-8 -*-
+# author: yanyang.xie@gmail.com
 
 import os
 import string
 import sys
 import time
 
+from fabric.colors import red, yellow, green
 from fabric.context_managers import lcd, cd, settings
 from fabric.decorators import roles, task, parallel
 from fabric.operations import run, local, put
 from fabric.state import env
 from fabric.tasks import execute
+from fabric.utils import abort
 
 sys.path.append('../util')
 import common_util
@@ -20,19 +21,24 @@ import encrypt_util
 import fab_util
 import log_util
 
-# whether to run the script in local, default is running the script in remote
-# is_local = False
-
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(here)
 
-vex_snapshot_dir, golden_files, user, public_key, password = ('', '', '', '', '')
-core_vex_server_list, memcached_server_list = ([], [])
+config_file_name = 'config.properties'
+changes_file_name = 'vex-changes.properties'
 
-download_sona_build = False
+config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
+config_file = here + os.sep + config_sub_folder + config_file_name
+vex_changes_file = here + os.sep + config_sub_folder + changes_file_name
+
+snapshot_deploy_dir, golden_files, user, public_key, password = ('', '', '', '', '')
+core_vex_server_list, memcached_server_list = ([], [])
+project_name, project_version, project_extension_name = ('', '', '')
+
+auto_download_build = False
 sona_user_name, sona_user_password = ('', '')
-vex_project_name, vex_project_version, vex_project_extension_name = ('', '', '')
-vex_local_file_dir, vex_local_file_name = ('', '')
+
+download_build_file_dir, downloaded_build_file_name = ('', '')
 http_proxy, https_proxy = None, None
 download_command_prefix = None
 
@@ -79,32 +85,32 @@ def start_core_vex_service():
 @task
 @parallel
 @roles('core_vex_server')
-def upload_vex_zip_file():
+def upload_build_zip_file():
     with cd('/tmp'):
-        run('rm -rf %s' % (constant.VEX_ZIP_FILE), pty=False)
-        run('rm -rf %s' % (constant.VEX_AUTO_DEPLOY_DIR), pty=False)
-        run('mkdir -p %s' % (constant.VEX_AUTO_DEPLOY_DIR), pty=False)
+        run('rm -rf %s' % (constant.ZIP_FILE_NAME), pty=False)
+        run('rm -rf %s' % (constant.AUTO_DEPLOY_DIR), pty=False)
+        run('mkdir -p %s' % (constant.AUTO_DEPLOY_DIR), pty=False)
     
     with lcd(here):
-        put(constant.VEX_ZIP_FILE, '/tmp')
+        put(constant.ZIP_FILE_NAME, '/tmp')
     
     with cd('/tmp'):
-        run('unzip -o %s -d %s' % (constant.VEX_ZIP_FILE, constant.VEX_AUTO_DEPLOY_DIR))
+        run('unzip -o %s -d %s' % (constant.ZIP_FILE_NAME, constant.AUTO_DEPLOY_DIR))
 
 @task
 @parallel
 @roles('core_vex_server')
 def do_golden_config():
     print '#' * 100
-    print 'Use golden config to setup vex initialize environment'
-    with cd(env.vex_snapshot_dir):
+    print 'Use golden config to setup environment'
+    with cd(env.snapshot_deploy_dir):
         run('chmod a+x setup.sh', pty=False)
         run('./setup.sh', pty=False)
 
 @task
 @parallel
 @roles('core_vex_server')
-def upload_vex_conf():
+def update_conf():
     print '#' * 100
     print 'Upload vex configuration file into tomcat/lib'
     
@@ -117,55 +123,46 @@ def upload_vex_conf():
                 put('%s/%s' % (here, golden_file), constant.TOMCAT_DIR + '/lib')
             else:
                 print 'Golden file %s is not exist in %s, not upload it.' % (golden_file, here)
-    
-    # change owner to tomcat
-    # run('chown -R tomcat:tomcat ' + constant.TOMCAT_DIR, pty=False)
-    
-    print 'update netty cache miss host'
+
+    print 'update cluster.host to internal IP %s' % (env.host)
     with cd(constant.TOMCAT_DIR + '/lib'):
         run("sed '/cluster.host=/s/localhost/%s/g' vex.properties > vex-tmp.properties" % (env.host), pty=False)
         run('mv vex-tmp.properties vex.properties')
         run('chown -R tomcat:tomcat ' + constant.TOMCAT_DIR, pty=False)
 
-
-def _fab_start_server(server_name, command=None, is_local=False, warn_only=True):
-    cmd = command or 'service %s start'
-    command_line = cmd % (server_name)
-    
-    print 'Start %s server by command %s......' % (server_name, command_line)
-    fab_util.fab_run_command(command_line, is_local, warn_only=warn_only, ex_abort=True)
-
 '''
 Check the status whether installation files are existed in local source folder
 '''
-def exist_vex_zip_file():
-    if not os.path.exists(here + os.sep + constant.VEX_ZIP_FILE):
-        print 'WARN:Core VEX release file(.zip) \'%s\' is not exist in folder %s, please check it first.' % (constant.VEX_ZIP_FILE, here)
+def exist_zip_file(file_name):
+    if not os.path.exists(file_name):
+        print 'WARN: release file(.zip) \'%s\' is not exist, please check it first.' % (file_name)
         return False
     else:
         return True
 
-def init_vex_deploy_log():
+def init_deploy_log(log_file_name):
     log_dir = here + os.sep + 'logs/'
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
     
-    sys.stdout = log_util.Logger(log_dir, "deploy-core-vex.log.%s" % (time.strftime("%Y-%m-%d", time.localtime())))
+    sys.stdout = log_util.Logger(log_dir, "%s.%s" % (log_file_name, time.strftime("%Y-%m-%d", time.localtime())))
     sys.stderr = sys.stdout
 
-def init_vex_deploy_parameters():
+def init_deploy_parameters(config_file):
     print '#' * 100
-    print 'Initial vex deployment parameters from config.properties'
-    vex_parameters = common_util.load_properties(here + os.sep + 'config.properties')
+    print 'Initial deployment parameters from %s' % (config_file)
+    parameters = common_util.load_properties(config_file)
     
-    global golden_files, user, public_key, password, core_vex_server_list, memcached_server_list
-    golden_files = vex_parameters.get('golden.config.file.list')
+    global user, public_key, password, core_vex_server_list, memcached_server_list, golden_files
+    user = common_util.get_config_value_by_key(parameters, 'user')
+    public_key = common_util.get_config_value_by_key(parameters, 'public.key')
+    password = common_util.get_config_value_by_key(parameters, 'password')
+    vex_servers = common_util.get_config_value_by_key(parameters, 'core.vex.server.list', '')
+    memcached_servers = common_util.get_config_value_by_key(parameters, 'memcached.server.list', '')
+    golden_files = common_util.get_config_value_by_key(parameters, 'golden.config.file.list')
     
-    user = vex_parameters.get('user')
-    public_key = vex_parameters.get('public.key') if vex_parameters.has_key('public.key') else ''
-    password = vex_parameters.get('password') if vex_parameters.has_key('password') else ''
-    core_vex_server_list = [user + '@' + core_ip for core_ip in vex_parameters.get('core.vex.server.list').split(',')]
-    memcached_server_list = [user + '@' + m_ip for m_ip in vex_parameters.get('memcached.server.list').split(',')]
+    core_vex_server_list = [user + '@' + core_ip for core_ip in vex_servers.split(',')]
+    memcached_server_list = [user + '@' + core_ip for core_ip in memcached_servers.split(',')]
     
     print 'golden_files:%s' % (golden_files)
     print 'user:%s' % (user)
@@ -175,108 +172,121 @@ def init_vex_deploy_parameters():
     print 'memcached_server_list:%s' % (string.join(memcached_server_list, ','))
     print '#' * 100
     
-    global download_sona_build, sona_user_name, sona_user_password, download_command_prefix
-    global vex_project_name, vex_project_version, vex_project_extension_name, vex_local_file_name, vex_local_file_dir
+    global auto_download_build, sona_user_name, sona_user_password, download_command_prefix
+    global project_name, project_version, project_extension_name, downloaded_build_file_name, download_build_file_dir
     global http_proxy, https_proxy
-    if vex_parameters.has_key('auto.download.sona.build') and string.strip(vex_parameters['auto.download.sona.build']) == 'True':
-        download_sona_build = True
-        sona_user_name = vex_parameters.get('sona.user.name')
-        sona_user_password = encrypt_util.decrypt('Thistech', vex_parameters.get('sona.user.passwd'))
+    
+    auto_download_build = common_util.get_config_value_by_key(parameters, 'auto.download.sona.build')
+    if auto_download_build and string.lower(auto_download_build) == 'true':
+        auto_download_build = True
+        sona_user_name = common_util.get_config_value_by_key(parameters, 'sona.user.name')
+        sona_user_password = encrypt_util.decrypt('Thistech', common_util.get_config_value_by_key(parameters, 'sona.user.passwd'))
         
-        vex_project_name = vex_parameters.get('vex.project.name')
-        vex_project_version = vex_parameters.get('vex.project.version')
-        vex_project_extension_name = vex_parameters.get('vex.project.extension.name')
-        vex_local_file_name = vex_parameters.get('vex.local.file.name')
-        vex_local_file_dir = vex_parameters.get('vex.local.file.dir') if vex_parameters.has_key('vex.local.file.dir') else here
+        project_name = common_util.get_config_value_by_key(parameters, 'project.name')
+        project_version = common_util.get_config_value_by_key(parameters, 'project.version')
+        project_extension_name = common_util.get_config_value_by_key(parameters, 'project.extension.name')
+        downloaded_build_file_name = common_util.get_config_value_by_key(parameters, 'build.local.file.name')
+        download_build_file_dir = common_util.get_config_value_by_key(parameters, 'build.local.file.dir', here)
+        http_proxy = common_util.get_config_value_by_key(parameters, 'http.proxy')
+        https_proxy = common_util.get_config_value_by_key(parameters, 'https.proxy')
+        download_command_prefix = common_util.get_config_value_by_key(parameters, 'download.command.prefix')
         
-        http_proxy = vex_parameters.get('http.proxy') if vex_parameters.has_key('http.proxy') else None
-        https_proxy = vex_parameters.get('https.proxy') if vex_parameters.has_key('https.proxy') else None
-        
-        download_command_prefix = vex_parameters.get('download.command.prefix') if vex_parameters.has_key('download.command.prefix') else None
-        
-        print 'download_sona_build:%s' % (download_sona_build)
+        print 'auto_download_build:%s' % (auto_download_build)
         print 'sona_user_name:%s' % (sona_user_name)
         print 'sona_user_password:%s' % ('***')
-        print 'vex_project_name:%s' % (vex_project_name)
-        print 'vex_project_version:%s' % (vex_project_version)
-        print 'vex_project_extension_name:%s' % (vex_project_extension_name)
-        print 'vex_local_file_dir:%s' % (vex_local_file_dir)
-        print 'vex_local_file_name:%s' % (vex_local_file_name)
+        print 'project_name:%s' % (project_name)
+        print 'project_version:%s' % (project_version)
+        print 'project_extension_name:%s' % (project_extension_name)
+        print 'download_build_file_dir:%s' % (download_build_file_dir)
+        print 'downloaded_build_file_name:%s' % (downloaded_build_file_name)
         print 'http_proxy:%s' % (http_proxy)
         print 'https_proxy:%s' % (https_proxy)
         print 'download_command_prefix:%s' % (download_command_prefix)
         print '#' * 100
     else:
-        download_sona_build = False
-        print 'download_sona_build:%s' % (download_sona_build)
+        auto_download_build = False
+        print 'auto_download_build:%s' % (auto_download_build)
 
-def init_vex_deploy_environment():
+def init_fab_env():
     print 'Setup fabric environment'
     if public_key != '':
         fab_util.setKeyFile(public_key)
-        
+
     if password != '':
-        fab_util.setPassword(password)
+        fab_util.set_password(password)
     
     fab_util.setRoles('core_vex_server', core_vex_server_list)
     fab_util.setRoles('memcached_server', memcached_server_list)
 
-def init_vex_deploy_dir():
-    print 'Initial vex deployment temp directory %s' % (constant.VEX_AUTO_DEPLOY_DIR)
-    local('rm -rf ' + constant.VEX_AUTO_DEPLOY_DIR)
-    local('mkdir -p ' + constant.VEX_AUTO_DEPLOY_DIR)
+def init_deploy_dir(f_dir):
+    print 'Initial deployment temp directory %s' % (f_dir)
+    local('rm -rf ' + f_dir)
+    local('mkdir -p ' + f_dir)
 
-def merge_vex_golden_config():
+def merge_golden_config():
     print '#' * 100
-    print 'Merge vex changes file %s with vex golden config %s' % ('vex-changes.properties', 'vex-golden.properties')
+    print 'Merge changes file %s with golden config %s' % (changes_file_name, 'vex-golden.properties')
     
     with lcd(here):
         local('rm -rf %s/vex.properties' % (here))
         local('rm -rf %s/vex-golden.properties' % (here))
-        local('unzip -o %s -d %s' % (constant.VEX_ZIP_FILE, constant.VEX_AUTO_DEPLOY_DIR))
+        local('unzip -o %s -d %s' % (constant.ZIP_FILE_NAME, constant.AUTO_DEPLOY_DIR))
         
         time.sleep(2)
-        snapshot_folder = os.listdir(constant.VEX_AUTO_DEPLOY_DIR)[0]
-        vex_snapshot_dir = constant.VEX_AUTO_DEPLOY_DIR + os.sep + snapshot_folder + os.sep
-        env.vex_snapshot_dir = vex_snapshot_dir
+        snapshot_folder = os.listdir(constant.AUTO_DEPLOY_DIR)[0]
+        snapshot_deploy_dir = constant.AUTO_DEPLOY_DIR + os.sep + snapshot_folder + os.sep
+        env.snapshot_deploy_dir = snapshot_deploy_dir
     
-    with lcd(env.vex_snapshot_dir + 'conf'):
+    with lcd(env.snapshot_deploy_dir + 'conf'):
         local('cp vex-golden.properties vex.properties')
-        common_util.merge_properties(vex_snapshot_dir + 'conf' + os.sep + 'vex.properties', here + os.sep + 'vex-changes.properties')
+        common_util.merge_properties(snapshot_deploy_dir + 'conf' + os.sep + 'vex.properties', vex_changes_file)
      
         local('cp vex.properties %s/vex.properties' % (here))
         local('cp vex-golden.properties %s/vex-golden.properties' % (here))
 
 def download_build():
-    # print 'python %s/download_sona_build.py -u %s -p %s -n %s -v %s -e %s -d %s -f %s' %(here,sona_user_name,sona_user_password,vex_project_name,vex_project_version,vex_project_extension_name,vex_local_file_dir, vex_local_file_name)
-    # local('python %s/download_sona_build.py -u %s -p %s -n %s -v %s -e %s -d %s -f %s' %(here,sona_user_name,sona_user_password,vex_project_name,vex_project_version,vex_project_extension_name,vex_local_file_dir, vex_local_file_name))
-    
-    download_script = os.path.dirname(here) + os.sep + 'util' + os.sep + 'download_sona_build.py'
-    command = 'python %s -u %s -p %s -n %s -v %s -e %s -d %s -f %s' % (download_script, sona_user_name, sona_user_password, vex_project_name, vex_project_version, vex_project_extension_name, vex_local_file_dir, vex_local_file_name)
+    import download_sona_build as downbuild
+    download_script = downbuild.__file__
+    command = 'python %s -u %s -p %s -n %s -v %s -e %s -d %s -f %s' % (download_script, sona_user_name, sona_user_password, project_name, project_version, project_extension_name, download_build_file_dir, downloaded_build_file_name)
     command = command + ' -y %s ' % (http_proxy) if http_proxy is not None else command
     command = command + ' -Y %s ' % (https_proxy) if https_proxy is not None else command
     if download_command_prefix is not None:
         command = 'source %s && %s' % (download_command_prefix, command)
     print '#' * 100
-    print 'Start to download %s build from sona' % (vex_project_name)
+    print 'Start to download %s build from sona' % (project_name)
     local(command)
     print '#' * 100
+
+def _fab_start_server(server_name, command=None, is_local=False, warn_only=True):
+    cmd = command or 'service %s start'
+    command_line = cmd % (server_name)
     
+    print 'Start %s server by command %s......' % (server_name, command_line)
+    fab_util.fab_run_command(command_line, is_local, warn_only=warn_only, ex_abort=False)  
 
 if __name__ == '__main__':
-    # prepare
-    init_vex_deploy_log()
-    init_vex_deploy_parameters()
-    init_vex_deploy_environment()
-    init_vex_deploy_dir()
-
-    if download_sona_build:
-        execute(download_build)
+    try:
+        # prepare
+        init_deploy_log(constant.DEPLOY_LOG_FILE_NAME)
+        init_deploy_parameters(config_file)
+        init_deploy_dir(constant.AUTO_DEPLOY_DIR)
+        init_fab_env()
     
-    if exist_vex_zip_file():
-        merge_vex_golden_config()
-        execute(shutdown_core_vex_service)
-        execute(upload_vex_zip_file)
-        execute(do_golden_config)
-        execute(upload_vex_conf)
-        execute(start_core_vex_service)
+        if auto_download_build:
+            execute(download_build)
+        
+        if exist_zip_file(here + os.sep + constant.ZIP_FILE_NAME):
+            merge_golden_config()
+            execute(shutdown_core_vex_service)
+            execute(upload_build_zip_file)
+            execute(do_golden_config)
+            execute(update_conf)
+            execute(start_core_vex_service)
+            print green('Finished to do %s-%s deployment.' % (project_name, project_version))
+        else:
+            print yellow('Not found the zip file %(s), not to do deployment any more' % (here + os.sep + constant.ZIP_FILE_NAME))
+            abort(2)
+    except Exception, e:
+        print '#' * 100
+        print red('Failed to do deployment. reason: %s', str(e))
+        abort(1)

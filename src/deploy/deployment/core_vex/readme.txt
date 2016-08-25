@@ -1,0 +1,1 @@
+python deploy_core_vex.py perf
