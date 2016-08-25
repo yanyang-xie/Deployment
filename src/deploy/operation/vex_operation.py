@@ -24,7 +24,7 @@ import fab_util
 
 here = os.path.dirname(os.path.abspath(__file__))
 
-config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
+config_sub_folder = sys.argv[2] + os.sep if len(sys.argv) > 2 else ''  # such as perf
 config_file = here + os.sep + config_sub_folder + 'config.properties'
 configs = common_util.load_properties(config_file)
 
@@ -499,5 +499,8 @@ if __name__ == '__main__':
     # fab_command = 'fab -f %s %s' % (os.path.abspath(__file__), 'stop_layer7_gateway')
     # os.popen(fab_command)
     
-    execute(stop_core_vex_cluster)
-    execute(start_core_vex_cluster)
+    if len(sys.argv) > 1:
+        task_name = sys.argv[1]
+        execute(eval(task_name))
+    else:
+        print red('please append your task name after script')
