@@ -24,13 +24,7 @@ import log_util
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(here)
 
-config_file_name = 'config.properties'
-changes_file_name = 'vex-changes.properties'
-
-config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
-config_file = here + os.sep + config_sub_folder + config_file_name
-vex_changes_file = here + os.sep + config_sub_folder + changes_file_name
-
+config_file, changes_file = ('', '')
 snapshot_deploy_dir, golden_files, user, public_key, password = ('', '', '', '', '')
 core_vex_server_list, memcached_server_list = ([], [])
 project_name, project_version, project_extension_name = ('', '', '')
@@ -69,14 +63,14 @@ def start_memcached_cluster(service_name=constant.MEMCACHED_SERVICE):
         _fab_start_server(service_name)
 
 @task
-def shutdown_core_vex_service():
+def shutdown_service():
     print '#' * 100
     print 'Shutdown core vex service'
     execute(shutdown_core_vex_cluster)
     execute(shutdown_memcached_cluster)
 
 @task
-def start_core_vex_service():
+def start_service():
     print '#' * 100
     print 'Start up core vex service'
     execute(start_memcached_cluster)
@@ -139,6 +133,23 @@ def exist_zip_file(file_name):
         return False
     else:
         return True
+
+def init_config_and_change_file():
+    config_file_name = 'config.properties'
+    config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
+    
+    
+    global config_file, changes_file
+    config_file = here + os.sep + config_sub_folder + config_file_name
+    if not os.path.exists(config_sub_folder):
+        abort('Not found the configuration file %s, please check' % (config_file))
+    
+    parameters = common_util.load_properties(config_file)
+    changes_file_name = common_util.get_config_value_by_key(parameters, 'changes.file.name')
+    changes_file = here + os.sep + config_sub_folder + changes_file_name
+    
+    print 'config_file: %s' % (config_file)
+    print 'change_file:%s' % (changes_file)
 
 def init_deploy_log(log_file_name):
     log_dir = here + os.sep + 'logs/'
@@ -206,7 +217,7 @@ def init_deploy_parameters(config_file):
     else:
         auto_download_build = False
         print 'auto_download_build:%s' % (auto_download_build)
-
+    
 def init_fab_env():
     print 'Setup fabric environment'
     if public_key != '':
@@ -225,7 +236,7 @@ def init_deploy_dir(f_dir):
 
 def merge_golden_config():
     print '#' * 100
-    print 'Merge changes file %s with golden config %s' % (changes_file_name, 'vex-golden.properties')
+    print 'Merge changes file %s with golden config %s' % (changes_file, 'vex-golden.properties')
     
     with lcd(here):
         local('rm -rf %s/vex.properties' % (here))
@@ -239,7 +250,7 @@ def merge_golden_config():
     
     with lcd(env.snapshot_deploy_dir + 'conf'):
         local('cp vex-golden.properties vex.properties')
-        common_util.merge_properties(snapshot_deploy_dir + 'conf' + os.sep + 'vex.properties', vex_changes_file)
+        common_util.merge_properties(snapshot_deploy_dir + 'conf' + os.sep + 'vex.properties', changes_file)
      
         local('cp vex.properties %s/vex.properties' % (here))
         local('cp vex-golden.properties %s/vex-golden.properties' % (here))
@@ -267,6 +278,7 @@ def _fab_start_server(server_name, command=None, is_local=False, warn_only=True)
 if __name__ == '__main__':
     try:
         # prepare
+        init_config_and_change_file()
         init_deploy_log(constant.DEPLOY_LOG_FILE_NAME)
         init_deploy_parameters(config_file)
         init_deploy_dir(constant.AUTO_DEPLOY_DIR)
@@ -277,11 +289,11 @@ if __name__ == '__main__':
         
         if exist_zip_file(here + os.sep + constant.ZIP_FILE_NAME):
             merge_golden_config()
-            execute(shutdown_core_vex_service)
+            execute(shutdown_service)
             execute(upload_build_zip_file)
             execute(do_golden_config)
             execute(update_conf)
-            execute(start_core_vex_service)
+            execute(start_service)
             print green('Finished to do %s-%s deployment.' % (project_name, project_version))
         else:
             print yellow('Not found the zip file %(s), not to do deployment any more' % (here + os.sep + constant.ZIP_FILE_NAME))
