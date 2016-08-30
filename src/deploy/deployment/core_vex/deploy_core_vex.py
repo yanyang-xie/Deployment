@@ -25,6 +25,8 @@ here = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(here)
 
 config_file, changes_file = ('', '')
+config_parameters = {}
+
 snapshot_deploy_dir, golden_files, user, public_key, password = ('', '', '', '', '')
 core_vex_server_list, memcached_server_list = ([], [])
 project_name, project_version, project_extension_name = ('', '', '')
@@ -143,8 +145,8 @@ def init_config_and_change_file():
     if not os.path.exists(config_file):
         abort('Not found the configuration file %s, please check' % (config_file))
     
-    parameters = common_util.load_properties(config_file)
-    changes_file_name = common_util.get_config_value_by_key(parameters, 'changes.file.name')
+    config_parameters = common_util.load_properties(config_file)
+    changes_file_name = common_util.get_config_value_by_key(config_parameters, 'changes.file.name')
     changes_file = here + os.sep + config_sub_folder + changes_file_name
     
     print 'config_file: %s' % (config_file)
@@ -160,46 +162,39 @@ def init_deploy_log(log_file_name):
 
 def init_deploy_parameters(config_file):
     print '#' * 100
-    print 'Initial deployment parameters from %s' % (config_file)
-    parameters = common_util.load_properties(config_file)
+    print 'Initial deployment config_parameters from %s' % (config_file)
+    config_parameters = common_util.load_properties(config_file)
     
     global user, public_key, password, core_vex_server_list, memcached_server_list, golden_files
-    user = common_util.get_config_value_by_key(parameters, 'user')
-    public_key = common_util.get_config_value_by_key(parameters, 'public.key')
-    password = common_util.get_config_value_by_key(parameters, 'password')
-    vex_servers = common_util.get_config_value_by_key(parameters, 'core.vex.server.list', '')
-    memcached_servers = common_util.get_config_value_by_key(parameters, 'memcached.server.list', '')
-    golden_files = common_util.get_config_value_by_key(parameters, 'golden.config.file.list')
-    
-    core_vex_server_list = [user + '@' + core_ip for core_ip in vex_servers.split(',')]
-    memcached_server_list = [user + '@' + core_ip for core_ip in memcached_servers.split(',')]
+    user = common_util.get_config_value_by_key(config_parameters, 'user')
+    public_key = common_util.get_config_value_by_key(config_parameters, 'public.key')
+    password = common_util.get_config_value_by_key(config_parameters, 'password')
+    golden_files = common_util.get_config_value_by_key(config_parameters, 'golden.config.file.list')
     
     print 'golden_files:%s' % (golden_files)
     print 'user:%s' % (user)
     print 'public_key:%s' % (public_key)
     print 'password:%s' % (password)
-    print 'core_vex_server_list:%s' % (string.join(core_vex_server_list, ','))
-    print 'memcached_server_list:%s' % (string.join(memcached_server_list, ','))
     print '#' * 100
     
     global auto_download_build, sona_user_name, sona_user_password, download_command_prefix
     global project_name, project_version, project_extension_name, downloaded_build_file_name, download_build_file_dir
     global http_proxy, https_proxy
     
-    auto_download_build = common_util.get_config_value_by_key(parameters, 'auto.download.sona.build')
+    auto_download_build = common_util.get_config_value_by_key(config_parameters, 'auto.download.sona.build')
     if auto_download_build and string.lower(auto_download_build) == 'true':
         auto_download_build = True
-        sona_user_name = common_util.get_config_value_by_key(parameters, 'sona.user.name')
-        sona_user_password = encrypt_util.decrypt('Thistech', common_util.get_config_value_by_key(parameters, 'sona.user.passwd'))
+        sona_user_name = common_util.get_config_value_by_key(config_parameters, 'sona.user.name')
+        sona_user_password = encrypt_util.decrypt('Thistech', common_util.get_config_value_by_key(config_parameters, 'sona.user.passwd'))
         
-        project_name = common_util.get_config_value_by_key(parameters, 'project.name')
-        project_version = common_util.get_config_value_by_key(parameters, 'project.version')
-        project_extension_name = common_util.get_config_value_by_key(parameters, 'project.extension.name')
-        downloaded_build_file_name = common_util.get_config_value_by_key(parameters, 'build.local.file.name')
-        download_build_file_dir = common_util.get_config_value_by_key(parameters, 'build.local.file.dir', here)
-        http_proxy = common_util.get_config_value_by_key(parameters, 'http.proxy')
-        https_proxy = common_util.get_config_value_by_key(parameters, 'https.proxy')
-        download_command_prefix = common_util.get_config_value_by_key(parameters, 'download.command.prefix')
+        project_name = common_util.get_config_value_by_key(config_parameters, 'project.name')
+        project_version = common_util.get_config_value_by_key(config_parameters, 'project.version')
+        project_extension_name = common_util.get_config_value_by_key(config_parameters, 'project.extension.name')
+        downloaded_build_file_name = common_util.get_config_value_by_key(config_parameters, 'build.local.file.name')
+        download_build_file_dir = common_util.get_config_value_by_key(config_parameters, 'build.local.file.dir', here)
+        http_proxy = common_util.get_config_value_by_key(config_parameters, 'http.proxy')
+        https_proxy = common_util.get_config_value_by_key(config_parameters, 'https.proxy')
+        download_command_prefix = common_util.get_config_value_by_key(config_parameters, 'download.command.prefix')
         
         print 'auto_download_build:%s' % (auto_download_build)
         print 'sona_user_name:%s' % (sona_user_name)
@@ -217,19 +212,28 @@ def init_deploy_parameters(config_file):
         auto_download_build = False
         print 'auto_download_build:%s' % (auto_download_build)
     
-def init_fab_env():
-    print 'Setup fabric environment'
+def init_fab_ssh_env():
+    print 'Setup fabric ssh environment'
     if public_key != '':
         fab_util.setKeyFile(public_key)
 
     if password != '':
         fab_util.set_password(password)
+
+def init_fab_roles():
+    print 'Setup fabric roles'
+    vex_servers = common_util.get_config_value_by_key(config_parameters, 'core.vex.server.list', '')
+    memcached_servers = common_util.get_config_value_by_key(config_parameters, 'memcached.server.list', '')
+    core_vex_server_list = [user + '@' + core_ip for core_ip in vex_servers.split(',')]
+    memcached_server_list = [user + '@' + core_ip for core_ip in memcached_servers.split(',')]
+    print 'core_vex_server_list:%s' % (string.join(core_vex_server_list, ','))
+    print 'memcached_server_list:%s' % (string.join(memcached_server_list, ','))
     
     fab_util.setRoles('core_vex_server', core_vex_server_list)
     fab_util.setRoles('memcached_server', memcached_server_list)
 
 def init_deploy_dir(f_dir):
-    print 'Initial deployment temp directory %s' % (f_dir)
+    print 'Initial temp deployment directory %s' % (f_dir)
     local('rm -rf ' + f_dir)
     local('mkdir -p ' + f_dir)
 
@@ -281,7 +285,8 @@ if __name__ == '__main__':
         init_deploy_log(constant.DEPLOY_LOG_FILE_NAME)
         init_deploy_parameters(config_file)
         init_deploy_dir(constant.AUTO_DEPLOY_DIR)
-        init_fab_env()
+        init_fab_ssh_env()
+        init_fab_roles()
     
         if auto_download_build:
             execute(download_build)
