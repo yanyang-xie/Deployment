@@ -138,7 +138,7 @@ def exist_zip_file(file_name):
 
 def init_config_and_change_file():
     config_file_name = 'config.properties'
-    config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
+    config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf/
     
     global config_file, changes_file
     config_file = here + os.sep + config_sub_folder + config_file_name
@@ -305,5 +305,5 @@ if __name__ == '__main__':
             abort(2)
     except Exception, e:
         print '#' * 100
-        print red('Failed to do deployment. reason: %s', str(e))
+        print red('Failed to do deployment. Line:%s, Reason: %s' % (sys.exc_info()[2].tb_lineno, str(e)))
         abort(1)
