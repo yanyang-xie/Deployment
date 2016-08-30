@@ -138,10 +138,9 @@ def init_config_and_change_file():
     config_file_name = 'config.properties'
     config_sub_folder = sys.argv[1] + os.sep if len(sys.argv) > 1 else ''  # such as perf
     
-    
     global config_file, changes_file
     config_file = here + os.sep + config_sub_folder + config_file_name
-    if not os.path.exists(config_sub_folder):
+    if not os.path.exists(config_file):
         abort('Not found the configuration file %s, please check' % (config_file))
     
     parameters = common_util.load_properties(config_file)
