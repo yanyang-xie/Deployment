@@ -163,6 +163,7 @@ def init_deploy_log(log_file_name):
 def init_deploy_parameters(config_file):
     print '#' * 100
     print 'Initial deployment config_parameters from %s' % (config_file)
+    global config_parameters
     config_parameters = common_util.load_properties(config_file)
     
     global user, public_key, password, core_vex_server_list, memcached_server_list, golden_files
